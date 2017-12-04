@@ -54,7 +54,6 @@ class FunctionCompiler(ast.NodeVisitor):
         This is actually quite tricky, as a node can be a function call,
         a reference to a local or global variable, a constant, etc.
         """
-        LOG.debug('determining type of %r', node)
         LOG.debug('determining type of %s', ast.dump(node))
         # For function calls, use the function definition of the callee
         if type(node) == ast.Call:

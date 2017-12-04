@@ -35,11 +35,16 @@ class FunctionCompiler(ast.NodeVisitor):
             self.visit(body_node)
 
         # Check for use of decorators
-        if type(self.node) == ast.FunctionDef:
-            if self.node.decorator_list:
-                raise CompileError(
-                    'decoratored functions are not supported',
-                    self.node.decorator_list[0])
+        if type(self.node) == ast.FunctionDef and self.node.decorator_list:
+            raise CompileError(
+                'function decorators are not supported',
+                self.node.decorator_list[0])
+
+        # Check for use of decorators
+        if type(self.node) == ast.FunctionDef and self.node.returns == None:
+            raise CompileError(
+                'missing return type annotation for function `{}`'
+                .format(self.node.name), self.node)
 
         if type(self.node) == ast.Module:
             return self.pre_src + '\nvoid ' + self.module_name + '() {\n' + self.src + '}\n'

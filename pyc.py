@@ -224,13 +224,16 @@ class FunctionCompiler(ast.NodeVisitor):
         for body_node in node.body:
             body_src += self.visit(body_node)
 
-        orelse_src = ''
-        for orelse_node in node.orelse:
-            orelse_src += self.visit(orelse_node)
+        if node.orelse:
+            orelse_src = ''
+            for orelse_node in node.orelse:
+                orelse_src += self.visit(orelse_node)
 
-        return 'if ({test}) {{\n{body}\n}} else {{\n{orelse}\n}}'.format(
-            test=test_src, body=body_src, orelse=orelse_src
-        )
+            return 'if ({test}) {{\n{body}\n}} else {{\n{orelse}\n}}'.format(
+                test=test_src, body=body_src, orelse=orelse_src)
+        else:
+            return 'if ({test}) {{\n{body}\n}}'.format(
+                test=test_src, body=body_src)
 
     def visit_Eq(self, node:ast.Eq):
         return '=='

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import argparse
 import ast
 import os
 import sys
@@ -19,13 +20,14 @@ class CompileError(RuntimeError):
         return self._msg
 
 class FunctionCompiler(ast.NodeVisitor):
-    def __init__(self, name, module_compiler, node):
-        self.name = name
+    def __init__(self, module_name, module_compiler, node):
+        self.module_name = module_name
         self.module_compiler = module_compiler
         self.node = node
 
         self.locals = {}
         self.src = ''
+        self.pre_src = ''
 
     def compile(self):
         self.src = ''
@@ -33,14 +35,19 @@ class FunctionCompiler(ast.NodeVisitor):
             self.visit(body_node)
 
         if type(self.node) == ast.Module:
-            return 'void ' + self.name + '() {\n' + self.src + '}\n'
+            return self.pre_src + '\nvoid ' + self.module_name + '() {\n' + self.src + '}\n'
         else:
-            return 'void ' + self.node.name + '() {\n' + self.src + '}\n'
+            return self.pre_src + '\nvoid ' + self.module_name + '_' + self.node.name + '() {\n' + self.src + '}\n'
 
     def generic_visit(self, node):
         raise CompileError(
             'No matching compiler handler for node {!r}'
             .format(node), node)
+
+    def visit_Import(self, node):
+        print(ast.dump(node))
+        for alias in node.names:
+            self.pre_src += '#include "{}.h"\n'.format(alias.name)
 
     def visit_Pass(self, node):
         pass
@@ -143,7 +150,8 @@ class FunctionCompiler(ast.NodeVisitor):
         self.locals[node.target.id] = node.annotation.id
 
 class ModuleCompiler(ast.NodeVisitor):
-    def __init__(self, source_filename, node):
+    def __init__(self, module_name, source_filename, node):
+        self.module_name = module_name
         self.node = node
         self.source_filename = source_filename
 
@@ -157,16 +165,14 @@ class ModuleCompiler(ast.NodeVisitor):
         func_compilers = []
 
         # Build a compiler for the top-level function
-        top_func_name = 'MODULE_{}'.format(
-            self.source_filename.replace('/', '_DOT_').replace('.py', ''))
-        top_func_compiler = FunctionCompiler(top_func_name, self, self.node)
+        top_func_compiler = FunctionCompiler(self.module_name, self, self.node)
         func_compilers.append(top_func_compiler)
 
         # Build a compiler for all other functions
         for mod_node in self.node.body:
             if type(mod_node) == ast.FunctionDef:
                 func_compiler = FunctionCompiler(
-                    mod_node.name, self, mod_node)
+                    self.module_name, self, mod_node)
                 func_compilers.append(func_compiler)
 
         # Run the compilers
@@ -179,12 +185,22 @@ class ModuleCompiler(ast.NodeVisitor):
 
         return src
 
+def parse_args():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument(
+        'input_modules', nargs='+', help='Python module names for compilation')
+    return p.parse_args()
+
 def main():
-    fh = open(sys.argv[1])
-    module = ast.parse(fh.read())
-    print(ast.dump(module))
-    compiler = ModuleCompiler(sys.argv[1], module)
-    print(compiler.compile())
+    args = parse_args()
+    src = ''
+    for module_name in args.input_modules:
+        filename = module_name.replace('.', '/') + '.py'
+        with open(filename) as fh:
+            module = ast.parse(fh.read())
+            compiler = ModuleCompiler(module_name, filename, module)
+            src += compiler.compile()
+    print(src)
     return os.EX_OK
 
 if __name__ == '__main__':

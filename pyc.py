@@ -214,7 +214,7 @@ class FunctionCompiler(ast.NodeVisitor):
             # builtints preserve the name
             return BUILTIN_FUNCS[lookup_name].name, BUILTIN_FUNCS[lookup_name]
         else:
-            raise LookupError()
+            raise LookupError('no such var `{}`'.format(lookup_name))
 
     def visit_If(self, node: ast.If):
         """Return the C representation of a python if statement"""

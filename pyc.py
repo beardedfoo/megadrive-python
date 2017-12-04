@@ -18,6 +18,7 @@ class CompileError(RuntimeError):
     def __str__(self):
         return self._msg
 
+
 class FunctionCompiler(ast.NodeVisitor):
     def __init__(self, module_name, module_compiler, node):
         self.module_name = module_name
@@ -148,6 +149,7 @@ class FunctionCompiler(ast.NodeVisitor):
         self.src += var_src
         self.locals[node.target.id] = node.annotation.id
 
+
 class ModuleCompiler(ast.NodeVisitor):
     def __init__(self, module_name, source_filename, node):
         self.module_name = module_name
@@ -184,11 +186,13 @@ class ModuleCompiler(ast.NodeVisitor):
 
         return src
 
+
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         'input_modules', nargs='+', help='Python module names for compilation')
     return p.parse_args()
+
 
 def main():
     args = parse_args()
@@ -201,6 +205,7 @@ def main():
             src += compiler.compile()
     print(src)
     return os.EX_OK
+
 
 if __name__ == '__main__':
     sys.exit(main())

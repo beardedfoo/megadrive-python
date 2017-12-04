@@ -7,10 +7,13 @@ import sys
 
 LOG = logging.getLogger(__name__)
 
+# These functions are called in python by name on left and in C name by name
+# on right.
 BUILTIN_FUNCS = {
     'print': ast.parse('def printf(s: str): pass').body[0],
 }
 
+# These are the C types for varius python types supported by this compiler
 BUILTIN_TYPES = {
     'int': 'int32_t',
     'str': 'char*',

@@ -16,6 +16,13 @@ BUILTIN_TYPES = {
     'str': 'char*',
 }
 
+# A static prefix/suffix for module level things
+MOD_PREFIX = 'PYMOD_'
+MOD_INIT_SUFFIX = '_INIT'
+
+# How are dots from python references represented in C?
+DOT = '_DOT_'
+
 class CompileError(RuntimeError):
     def __init__(self, msg, node):
         if type(node) != ast.Module:
@@ -138,7 +145,7 @@ class FunctionCompiler(ast.NodeVisitor):
         # Convert the arg specifications
         if type(self.node) == ast.Module:
             # Modules have no parameters
-            args_src = 'char* __name__'
+            args_src = ''
         else:
             c_args = []
             for arg in self.node.args.args:
@@ -161,9 +168,9 @@ class FunctionCompiler(ast.NodeVisitor):
             args_src = ', '.join(c_args)
 
         if type(self.node) == ast.Module:
-            fn_name = self.module_name
+            fn_name = MOD_PREFIX + self.module_name + MOD_INIT_SUFFIX
         else:
-            fn_name = '_'.join([self.module_name, self.node.name])
+            fn_name, _ = self._load_name(self.node)
 
         # TODO: Create pre_src with #include stmts
         pre_src = ''
@@ -178,19 +185,25 @@ class FunctionCompiler(ast.NodeVisitor):
             'Unsupported ast node: {}'.format(ast.dump(node)), node)
 
     def _load_name(self, node):
-        if node.id in self.locals:
+        if type(node) == ast.FunctionDef:
+            lookup_name = node.name
+        else:
+            lookup_name = node.id
+
+        if lookup_name in self.locals:
             # items at the local scope have the same variable name
-            return [node.id, self.locals[node.id]]
-        elif node.id in self.module_compiler.globals:
+            return [lookup_name, self.locals[lookup_name]]
+        elif lookup_name in self.module_compiler.globals:
             # items resolving at the module level have the module name
             # prefixed in C
             return [
-                '{}_{}'.format(self.module_name, node.id),
-                self.module_compiler.globals[node.id]
+                '{}{}{}{}'.format(
+                    MOD_PREFIX, self.module_name, DOT, lookup_name),
+                self.module_compiler.globals[lookup_name]
             ]
-        elif node.id in BUILTIN_FUNCS:
+        elif lookup_name in BUILTIN_FUNCS:
             # builtints preserve the name
-            return node.id, BUILTIN_FUNCS[node.id]
+            return BUILTIN_FUNCS[lookup_name].name, BUILTIN_FUNCS[lookup_name]
         else:
             raise LookupError()
 
@@ -395,14 +408,23 @@ class FunctionCompiler(ast.NodeVisitor):
 
 
 class ModuleCompiler(ast.NodeVisitor):
-    def __init__(self, module_name, source_filename, node):
+    def __init__(self, module_name, source_filename, node, dunder_name):
         self.module_name = module_name
         self.globals = {}
         self.node = node
         self.source_filename = source_filename
+        self.__name__ = dunder_name
 
         # Declare __name__ as a string global
         self.globals['__name__'] = ast.AnnAssign(annotation=ast.Name(id='str'))
+
+    def _initial_module_source(self):
+        return '\n'.join([
+            '#include <stdint.h>',
+            '#define {prefix}{mod_name}{DOT}__name__ "{dunder_name}"'.format(
+                prefix=MOD_PREFIX, mod_name=self.module_name, DOT=DOT,
+                dunder_name=self.__name__),
+        ]) + '\n\n'
 
     def generic_visit(self, node):
         raise CompileError(
@@ -410,7 +432,7 @@ class ModuleCompiler(ast.NodeVisitor):
             .format(node), node)
 
     def compile(self):
-        src = ''
+        src = self._initial_module_source()
         func_compilers = []
 
         # Build a compiler for the top-level function
@@ -447,12 +469,34 @@ def main():
     logging.basicConfig(level=logging.DEBUG)
     args = parse_args()
     src = ''
-    for module_name in args.input_modules:
+    for i, module_name in enumerate(args.input_modules):
+        # Figure out what __name__ will be for this module. The first module
+        # listed will be __main__.
+        if i == 0:
+            dunder_name = '__main__'
+        else:
+            dunder_name = module_name
+
+        # Build a path name for the python module
         filename = module_name.replace('.', '/') + '.py'
+
+        # Open parse, and compile the file
         with open(filename) as fh:
+            # Parse the file using standard python parser which gives back a
+            # data structure called an AST representing the code
             module = ast.parse(fh.read())
-            compiler = ModuleCompiler(module_name, filename, module)
+
+            # Using the returned AST generate C code
+            compiler = ModuleCompiler(
+                module_name, filename, module, dunder_name)
+
+            # Add the generated C code to the project source
             src += compiler.compile()
+
+    # Add a main() fn
+    src += 'int main() {{return {}{}{}();}}\n'.format(
+        MOD_PREFIX, args.input_modules[0], MOD_INIT_SUFFIX)
+
     print(src)
     return os.EX_OK
 

@@ -93,13 +93,6 @@ class FunctionCompiler(ast.NodeVisitor):
         raise LookupError(
             'BUG: cannot determine C type for {}'.format(ast.dump(node)))
 
-    def _cvalue(self, value):
-        if type(value) == ast.Str:
-            return '"{}"'.format(value.s.replace('"', '\\"'))
-        if type(value) == ast.Num:
-            return str(value.n)
-        raise ValueError()
-
     def _fn_ret_ctype(self, fn: ast.FunctionDef):
         if self.node.returns == None:
             for fn_node in ast.walk(self.node):

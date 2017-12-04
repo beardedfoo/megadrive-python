@@ -4,7 +4,6 @@ import ast
 import os
 import sys
 
-SUPPORTED_MODULES = []
 
 class CompileError(RuntimeError):
     def __init__(self, msg, node):

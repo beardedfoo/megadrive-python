@@ -13,7 +13,7 @@ BUILTIN_FUNCS = {
     'print': ast.parse('def printf(s: str): pass').body[0],
 }
 
-# These are the C types for varius python types supported by this compiler
+# These are the C types for various python types supported by this compiler
 BUILTIN_TYPES = {
     'int': 'int32_t',
     'str': 'char*',

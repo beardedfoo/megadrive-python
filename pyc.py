@@ -238,6 +238,9 @@ class FunctionCompiler(ast.NodeVisitor):
     def visit_Eq(self, node:ast.Eq):
         return '=='
 
+    def visit_Gt(self, node:ast.Gt):
+        return '>'
+
     def visit_Compare(self, node:ast.Compare):
         """Return the C representation of comparison tests"""
         # Find the C type of the left value

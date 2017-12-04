@@ -34,6 +34,13 @@ class FunctionCompiler(ast.NodeVisitor):
         for body_node in self.node.body:
             self.visit(body_node)
 
+        # Check for use of decorators
+        if type(self.node) == ast.FunctionDef:
+            if self.node.decorator_list:
+                raise CompileError(
+                    'decoratored functions are not supported',
+                    self.node.decorator_list[0])
+
         if type(self.node) == ast.Module:
             return self.pre_src + '\nvoid ' + self.module_name + '() {\n' + self.src + '}\n'
         else:

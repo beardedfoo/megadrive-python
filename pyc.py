@@ -389,37 +389,21 @@ class FunctionCompiler(ast.NodeVisitor):
                 'Local var `{}` has already been declared'
                 .format(node.target.id))
 
-        # Sort out the C storage type
-        if node.annotation.id == 'int':
-            ctype = self._ctype(node.annotation)
-            var_src = '{} {}'.format(ctype, node.target.id)
+        # Ensure the data types match for assignment
+        target_type = self._ctype(node)
+        value_type = self._ctype(node.value)
+        if target_type != value_type:
+            raise CompileError(
+                'type mismatch in assignment of {} to {}'.format(
+                    node.value, node.target), node.value)
 
-            # Sort out whether any initial value is needed
-            if type(node.value) == ast.Num:
-                var_src += ' = {}'.format(int(node.value.n))
-            # Other value types are unhandled
-            elif node.value != None:
-                raise CompileError(
-                    'assignment expected type int, not {}'
-                    .format(type(node.value)), node.value)
-        elif node.annotation.id == 'str':
-            var_src = 'char* {}'.format(node.target.id)
-            if node.value:
-                c_str = node.value.s
-                var_src += ' = "{}"'.format(c_str.replace('"', '\\"'))
+        # Store this declaration in the locals table
+        self.locals[node.target.id] = node
 
-            # Other value types are unhandled
-            elif node.value != None:
-                raise CompileError(
-                    'assignment expected type int, not {}'
-                    .format(type(node.value)), node.value)
-        else:
-            raise NotImplementedError(
-                'Unknown type {}'
-                .format(type(node.annotation.id)), node.annotation)
-
-        self.locals[node.target.id] = node.annotation.id
-        return var_src
+        # Generate C code for the assignment
+        target_src = self.visit(node.target)
+        value_src = self.visit(node.value)
+        return '{} {} = {};'.format(target_type, target_src, value_src)
 
 
 class ModuleCompiler(ast.NodeVisitor):

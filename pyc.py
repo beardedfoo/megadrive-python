@@ -52,6 +52,15 @@ class FunctionCompiler(ast.NodeVisitor):
         a reference to a local or global variable, a constant, etc.
         """
         LOG.debug('determining type of %r', node)
+        LOG.debug('determining type of %s', ast.dump(node))
+        # For function calls, use the function definition of the callee
+        if type(node) == ast.Call:
+            return self._ctype(node.func)
+
+        # For function definitions use the return type annotated
+        if type(node) == ast.FunctionDef:
+            return self._ctype(node.returns)
+
         # If a variable was declared with an annotated assignment return the
         # type annotated at the time of assignment
         if type(node) == ast.AnnAssign:

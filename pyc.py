@@ -294,7 +294,7 @@ class FunctionCompiler(ast.NodeVisitor):
     def visit_Str(self, node:ast.Str):
         """Return the C representation of a python string"""
         # Convert strings to hex byte arrays, and include a null termination
-        return '(char[]){{{}}}'.format(
+        return '(const char[]){{{}}}'.format(
             ', '.join([hex(ord(c)) for c in node.s + '\0']))
 
     def visit_Name(self, node:ast.Name):

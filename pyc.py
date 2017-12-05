@@ -529,7 +529,51 @@ class ModuleCompiler(ast.NodeVisitor):
             .format(node), node)
 
     def compile(self):
-        src = self._initial_module_source()
+        # Store the generated C source code for program in one big string
+        src = ''
+
+        # Look for import statements
+        for node in ast.walk(self.node):
+            if type(node) != ast.Import:
+                continue
+
+            # Look at what module is being imported
+            for alias in node.names:
+                # If the import isn't the form of "import ... as ..." then
+                # juse use the normal name for the missing "as ..."
+                asname = alias.asname if alias.asname else alias.name
+
+                # Ensure the asname isn't taken
+                if asname in self.globals:
+                    raise CompileError(
+                        'cannot import `{}` multiple times'.format(
+                            asname), node)
+
+                # Look for the module relative to the current working dir
+                filename = alias.name.replace('.', '/') + '.py'
+
+                # Open the file
+                with open(filename) as fh:
+                    # Parse the root node using the ast module
+                    root_node = ast.parse(fh.read())
+
+                # Create a compiler for this module
+                compiler = ModuleCompiler(
+                    alias.name, filename, root_node, asname)
+
+                # Ensure the module is initialized later
+                imported_modules.append(asname)
+
+                # Expose that module as a global in this module
+                self.globals[asname] = compiler
+
+                # Compile the source and add it to the current source string
+                src += compiler.compile()
+
+        # Add some pre-code for the module
+        src += self._initial_module_source()
+
+        # Keep track of compilers for the functions in this module
         func_compilers = []
 
         # Build a compiler for the top-level function
@@ -552,6 +596,7 @@ class ModuleCompiler(ast.NodeVisitor):
             e._msg = '{}:{}'.format(self.source_filename, e._msg)
             raise
 
+        # Return the generated C source code
         return src
 
 
@@ -591,6 +636,7 @@ def main():
             src += compiler.compile()
 
     # Add a main() fn, calling the first module given on the CLI
+    # TODO: initialize imported functions in main() or somewhere similar
     src += 'int main() {{return {}{}{}();}}\n'.format(
         MOD_PREFIX, args.input_modules[0], MOD_INIT_SUFFIX)
 

@@ -294,7 +294,10 @@ class FunctionCompiler(ast.NodeVisitor):
     def visit_Str(self, node:ast.Str):
         """Return the C representation of a python string"""
         # C strings need to have double quote escaped with backslash
-        return '"{}"'.format(node.s.replace('"', '\\"'))
+        return '"{}"'.format(
+            node.s
+            .replace('"', '\\"')
+            .replace('\n', '\\n'))
 
     def visit_Name(self, node:ast.Name):
         """Returns the C name of a python variable"""

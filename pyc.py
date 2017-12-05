@@ -244,6 +244,10 @@ class FunctionCompiler(ast.NodeVisitor):
     def visit_Lt(self, node: ast.Lt):
         return '>'
 
+    def visit_BoolOp(self, node: ast.BoolOp):
+        return ' {} '.format(self.visit(node.op)).join([
+            '({})'.format(self.visit(v)) for v in node.values])
+
     def visit_Compare(self, node:ast.Compare):
         """Return the C representation of comparison tests"""
         # Find the C type of the left value

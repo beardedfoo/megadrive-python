@@ -81,7 +81,7 @@ class FunctionCompiler(ast.NodeVisitor):
         if type(node) == ast.AnnAssign:
             return self._pytype(node.annotation)
 
-        # If a const value is passed in return the C type for the python type
+        # If a const value is passed in return the python type
         if type(node) == ast.Num:
             return 'int'
         if type(node) == ast.Str:

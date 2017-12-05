@@ -49,8 +49,7 @@ class FunctionCompiler(ast.NodeVisitor):
         self.locals = {}
 
     def _ctype(self, node):
-        """Distill an ast node down the C type which it will evaluate to.
-        """
+        """Distill an ast node down the C type which it will evaluate to."""
         pytype = self._pytype(node)
         return BUILTIN_TYPES[pytype]
 

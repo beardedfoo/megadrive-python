@@ -275,13 +275,42 @@ class FunctionCompiler(ast.NodeVisitor):
             if left_type != right_type:
                 raise CompileError('mismatched types in comparison', node.left)
 
-        parts = []
-        parts.append(self.visit(node.left))
-        for op, cmp in zip(node.ops, node.comparators):
-            parts.append(self.visit(op))
-            parts.append(self.visit(cmp))
-        LOG.debug('compare parts: %r', parts)
-        return ' '.join(parts)
+        # String comparison is a different matter in C
+        if left_type == BUILTIN_TYPES['str']:
+            # Ensure exactly two items are being compared (left + 1 comparator)
+            if len(node.comparators) != 1:
+                raise CompileError(
+                    'string comparisons must be of exactly two items', node)
+
+            # Determine which strcmp() return value to expect
+            op = node.ops[0]
+            comp = '=='
+            if type(op) == ast.Eq:
+                expect = 0
+            elif type(op) == ast.NotEq:
+                expect = 0
+                comp = '!='
+            elif type(op) == ast.Lt:
+                expect = -1
+            elif type(op) == ast.Gt:
+                expect = 1
+            else:
+                raise CompileError(
+                    'unsupported string comparison op: {}'
+                    .format(ast.dump(op)), node)
+
+            return 'strcmp({}, {}) {} {}'.format(
+                self.visit(node.left), self.visit(node.comparators[0]), comp,
+                expect)
+        else:
+            # For non-string comparisons just translate the symbols
+            parts = []
+            parts.append(self.visit(node.left))
+            for op, cmp in zip(node.ops, node.comparators):
+                parts.append(self.visit(op))
+                parts.append(self.visit(cmp))
+            LOG.debug('compare parts: %r', parts)
+            return ' '.join(parts)
 
     def visit_Call(self, node:ast.Call):
         # Find the function being called

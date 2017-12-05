@@ -193,24 +193,25 @@ class FunctionCompiler(ast.NodeVisitor):
             'Unsupported ast node: {}'.format(ast.dump(node)), node)
 
     def _load_name(self, node):
+        # Functions are looked up by name, while others are looked up by id
         if type(node) == ast.FunctionDef:
             lookup_name = node.name
         else:
             lookup_name = node.id
 
+        # Search in locals first, then module globals, then builtins
         if lookup_name in self.locals:
-            # items at the local scope have the same variable name
+            # Items at the local scope have the same variable name in C.
             return [lookup_name, self.locals[lookup_name]]
         elif lookup_name in self.module_compiler.globals:
-            # items resolving at the module level have the module name
-            # prefixed in C
+            # Items resolving at the module level have a more complex naming
+            # scheme.
             return [
-                '{}{}{}{}'.format(
-                    MOD_PREFIX, self.module_name, DOT, lookup_name),
+                ''.join([MOD_PREFIX, self.module_name, DOT, lookup_name]),
                 self.module_compiler.globals[lookup_name]
             ]
         elif lookup_name in BUILTIN_FUNCS:
-            # builtints preserve the name
+            # Builtin functions have different names in C from python
             return BUILTIN_FUNCS[lookup_name].name, BUILTIN_FUNCS[lookup_name]
         else:
             raise LookupError('no such var `{}`'.format(lookup_name))

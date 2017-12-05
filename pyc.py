@@ -49,41 +49,55 @@ class FunctionCompiler(ast.NodeVisitor):
         self.locals = {}
 
     def _ctype(self, node):
-        """Distill an ast node down the C type which it will evaluate to
+        """Distill an ast node down the C type which it will evaluate to.
+        """
+        pytype = self._pytype(node)
+        return BUILTIN_TYPES[pytype]
+
+    def _pytype(self, node):
+        """
+        Distill an AST node down to the Python type it will evaluate/return.
 
         This is actually quite tricky, as a node can be a function call,
         a reference to a local or global variable, a constant, etc.
         """
-        LOG.debug('determining type of %s', ast.dump(node))
+        # If the node is None, the type is None
+        if node == None:
+            return None
+
+        # Python modules will always return an int when called
+        if type(node) == ast.Module:
+            return 'int'
+
         # For function calls, use the function definition of the callee
         if type(node) == ast.Call:
-            return self._ctype(node.func)
+            return self._pytype(node.func)
 
         # For function definitions use the return type annotated
         if type(node) == ast.FunctionDef:
-            return self._ctype(node.returns)
+            return self._pytype(node.returns)
 
         # If a variable was declared with an annotated assignment return the
         # type annotated at the time of assignment
         if type(node) == ast.AnnAssign:
-            return self._ctype(node.annotation)
+            return self._pytype(node.annotation)
 
         # If a const value is passed in return the C type for the python type
         if type(node) == ast.Num:
-            return BUILTIN_TYPES['int']
+            return 'int'
         if type(node) == ast.Str:
-            return BUILTIN_TYPES['str']
+            return 'str'
 
         # If the node passed in is a reference
         if type(node) == ast.Name:
             # If the reference is to a builtin type, return that type
             if node.id in BUILTIN_TYPES:
-                return BUILTIN_TYPES[node.id]
+                return node.id
 
             # Load the declaration for the variable referenced and return the
             # storage type annotated at the time of declaration
             _, val = self._load_name(node)
-            return self._ctype(val)
+            return self._pytype(val)
 
         # Look for references to None
         if type(node) == ast.NameConstant and node.value == None:
@@ -91,7 +105,7 @@ class FunctionCompiler(ast.NodeVisitor):
 
         # Nothing was found (probably a bug)
         raise LookupError(
-            'BUG: cannot determine C type for {}'.format(ast.dump(node)))
+            'BUG: cannot determine python type for {}'.format(ast.dump(node)))
 
     def _fn_ret_ctype(self, fn: ast.FunctionDef):
         # It is okay for functions to lack annotations for return types, but
@@ -354,6 +368,14 @@ class FunctionCompiler(ast.NodeVisitor):
 
     def visit_Return(self, node: ast.Return):
         """Return the C representation of a python 'return' statement"""
+        # Ensure the value being returned matches the annotated type of this
+        # function.
+        l_type = self._pytype(self.node)
+        r_type = self._pytype(node.value)
+        if l_type != r_type:
+            raise CompileError(
+                'cannot return type `{}` from function with return type `{}`'
+                .format(l_type, r_type), node)
         return 'return {};'.format(self.visit(node.value))
 
     def visit_Expr(self, node: ast.Expr):

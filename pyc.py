@@ -248,6 +248,9 @@ class FunctionCompiler(ast.NodeVisitor):
         return ' {} '.format(self.visit(node.op)).join([
             '({})'.format(self.visit(v)) for v in node.values])
 
+    def visit_And(self, node: ast.And):
+        return '&&'
+
     def visit_Compare(self, node:ast.Compare):
         """Return the C representation of comparison tests"""
         # Find the C type of the left value

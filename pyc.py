@@ -560,7 +560,7 @@ def main():
             # Add the generated C code to the project source
             src += compiler.compile()
 
-    # Add a main() fn
+    # Add a main() fn, calling the first module given on the CLI
     src += 'int main() {{return {}{}{}();}}\n'.format(
         MOD_PREFIX, args.input_modules[0], MOD_INIT_SUFFIX)
 

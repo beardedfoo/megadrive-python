@@ -163,11 +163,15 @@ class FunctionCompiler(ast.NodeVisitor):
             # Modules always return int32
             ret_type = BUILTIN_TYPES['int']
 
-        # Convert the arg specifications
+        # Convert the arg specifications for this function/module into a C
+        # function signature. Modules are just code blocks, so they too are
+        # implemented as functions in C.
         if type(self.node) == ast.Module:
             # Modules have no parameters
             args_src = ''
         else:
+            # Convert each argument individually to C source, and then join
+            # them all together into a function signature.
             c_args = []
             for arg in self.node.args.args:
                 arg_name = arg.arg
@@ -178,16 +182,24 @@ class FunctionCompiler(ast.NodeVisitor):
                         'missing type annotation for parameter `{}`'
                         .format(arg_name), arg)
 
+                # Using the annotation, sort out which C type should be used
+                # for this argument.
                 try:
                     arg_ctype = self._ctype(arg.annotation)
                 except LookupError:
                     raise CompileError(
                         'unknown type `{}` for argument `{}`'
                         .format(ast.dump(arg.annotation), arg_name), arg)
+
+                # Add the C source for this argument to a list, which is later
+                # used to build the function signature.
                 c_args.append('{} {}'.format(arg_ctype, arg_name))
 
+            # Join the individual C source for each argument into one string
             args_src = ', '.join(c_args)
 
+        # Sort out what the name of this C functon will be. Modules need a
+        # special format, but regular functions are a bit simpler.
         if type(self.node) == ast.Module:
             fn_name = MOD_PREFIX + self.module_name + MOD_INIT_SUFFIX
         else:
@@ -201,11 +213,22 @@ class FunctionCompiler(ast.NodeVisitor):
         )
 
     def generic_visit(self, node):
+        # This function is called by ast.visit() if there is no such visit_XXX
+        # function matching the type of the node in the AST tree being visited.
+        # In other words, this compiler has no function implemented to handle
+        # the node being passed in. There's nothing to do here except raise an
+        # error about how there is a missing function in the compiler.
         LOG.error('Encounteder unsupported node: %r', node)
         raise CompileError(
             'Unsupported ast node: {}'.format(ast.dump(node)), node)
 
     def _load_name(self, node):
+        """Returns the AST node in which a variable was undeclared
+
+        Arguments:
+            node - an ast.Name or other reference to a variable
+
+        """
         # Functions are looked up by name, while others are looked up by id
         if type(node) == ast.FunctionDef:
             lookup_name = node.name
@@ -231,20 +254,28 @@ class FunctionCompiler(ast.NodeVisitor):
 
     def visit_If(self, node: ast.If):
         """Return the C representation of a python if statement"""
+        # Compile the test part of the if block into C code. This is the part
+        # coming directly after "if", which tests some boolean case.
         test_src = self.visit(node.test)
 
+        # Compile the body to C source. This is the part executed when the test
+        # evaluates to True.
         body_src = ''
         for body_node in node.body:
             body_src += self.visit(body_node)
 
+        # Compile the orelse to C source. This is the part executed when the
+        # test evaluates to False.
         if node.orelse:
             orelse_src = ''
             for orelse_node in node.orelse:
                 orelse_src += self.visit(orelse_node)
 
+            # Return all compiled source in an if...else... format
             return 'if ({test}) {{\n{body}\n}} else {{\n{orelse}\n}}'.format(
                 test=test_src, body=body_src, orelse=orelse_src)
         else:
+            # If there wasn't an else block, return a simpler format
             return 'if ({test}) {{\n{body}\n}}'.format(
                 test=test_src, body=body_src)
 

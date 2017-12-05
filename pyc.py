@@ -148,7 +148,7 @@ class FunctionCompiler(ast.NodeVisitor):
                     .format(self.node.name), self.node)
         else:
             # Modules always return int32
-            ret_type = 'int32_t'
+            ret_type = BUILTIN_TYPES['int']
 
         # Convert the arg specifications
         if type(self.node) == ast.Module:

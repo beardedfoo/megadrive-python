@@ -251,6 +251,9 @@ class FunctionCompiler(ast.NodeVisitor):
     def visit_And(self, node: ast.And):
         return '&&'
 
+    def visit_Or(self, node: ast.Or):
+        return '||'
+
     def visit_Compare(self, node:ast.Compare):
         """Return the C representation of comparison tests"""
         # Find the C type of the left value

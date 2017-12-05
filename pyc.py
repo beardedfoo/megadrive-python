@@ -235,10 +235,10 @@ class FunctionCompiler(ast.NodeVisitor):
             return 'if ({test}) {{\n{body}\n}}'.format(
                 test=test_src, body=body_src)
 
-    def visit_Eq(self, node:ast.Eq):
+    def visit_Eq(self, node: ast.Eq):
         return '=='
 
-    def visit_Gt(self, node:ast.Gt):
+    def visit_Gt(self, node: ast.Gt):
         return '>'
 
     def visit_Compare(self, node:ast.Compare):

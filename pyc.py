@@ -94,6 +94,8 @@ class FunctionCompiler(ast.NodeVisitor):
             'BUG: cannot determine C type for {}'.format(ast.dump(node)))
 
     def _fn_ret_ctype(self, fn: ast.FunctionDef):
+        # It is okay for functions to lack annotations for return types, but
+        # only if they do not contain any return statement
         if self.node.returns == None:
             for fn_node in ast.walk(self.node):
                 if type(fn_node) == ast.Return:
@@ -103,6 +105,8 @@ class FunctionCompiler(ast.NodeVisitor):
             else:
                 return 'void'
         else:
+            # For functions with return type annotations, determine the C type
+            # for the annotated python type
             try:
                 return self._ctype(self.node.returns)
             except LookupError:
@@ -318,6 +322,8 @@ class FunctionCompiler(ast.NodeVisitor):
             return '#include "{}.h"\n'.format(alias.name)
 
     def visit_Pass(self, node: ast.Pass):
+        # Unlike python, no special keywords are required for a NOP body, so we
+        # don't actually need to do anything here
         pass
 
     def visit_FunctionDef(self, node: ast.FunctionDef):

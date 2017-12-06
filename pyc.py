@@ -140,6 +140,12 @@ class FunctionCompiler(ast.NodeVisitor):
     def compile(self):
         LOG.debug('Compiling: ' + ast.dump(self.node))
 
+        # Check for use of decorators, which is not supported
+        if type(self.node) == ast.FunctionDef and self.node.decorator_list:
+            raise CompileError(
+                'function decorators are not supported',
+                self.node.decorator_list[0])
+
         # Fill the locals with parameters passed into the function
         if type(self.node) == ast.FunctionDef:
             # This is confusing for sure...here is an example data structure:
@@ -155,12 +161,6 @@ class FunctionCompiler(ast.NodeVisitor):
             LOG.debug('source for node %s: %r', body_node, node_src)
             if node_src:
                 src += node_src + '\n'
-
-        # Check for use of decorators, which is not supported
-        if type(self.node) == ast.FunctionDef and self.node.decorator_list:
-            raise CompileError(
-                'function decorators are not supported',
-                self.node.decorator_list[0])
 
         # Get the return type for this function
         if type(self.node) != ast.Module:

@@ -298,7 +298,7 @@ class FunctionCompiler(ast.NodeVisitor):
         return '>'
 
     def visit_Lt(self, node: ast.Lt):
-        return '>'
+        return '<'
 
     def visit_BoolOp(self, node: ast.BoolOp):
         return ' {} '.format(self.visit(node.op)).join([

@@ -13,10 +13,14 @@ BUILTIN_FUNCS = {
     'print': ast.parse('def printf(s: str): pass').body[0],
 }
 
+# Define some constants for the names of python types
+PYTYPE_INT = 'int'
+PYTYPE_STR = 'str'
+
 # These are the C types for various python types supported by this compiler
 BUILTIN_TYPES = {
-    'int': 'int32_t',
-    'str': 'char*',
+    PYTYPE_INT: 'int32_t',
+    PYTYPE_STR: 'char*',
 }
 
 # A static prefix/suffix for module level things
@@ -66,7 +70,7 @@ class FunctionCompiler(ast.NodeVisitor):
 
         # Python modules will always return an int when called
         if type(node) == ast.Module:
-            return 'int'
+            return PYTYPE_INT
 
         # For function calls, use the function definition of the callee
         if type(node) == ast.Call:
@@ -83,9 +87,9 @@ class FunctionCompiler(ast.NodeVisitor):
 
         # If a const value is passed in return the python type
         if type(node) == ast.Num:
-            return 'int'
+            return PYTYPE_INT
         if type(node) == ast.Str:
-            return 'str'
+            return PYTYPE_STR
 
         # If the node passed in is a reference
         if type(node) == ast.Name:
@@ -161,7 +165,7 @@ class FunctionCompiler(ast.NodeVisitor):
                     .format(self.node.name), self.node)
         else:
             # Modules always return int32
-            ret_type = BUILTIN_TYPES['int']
+            ret_type = BUILTIN_TYPES[PYTYPE_INT]
 
         # Convert the arg specifications for this function/module into a C
         # function signature. Modules are just code blocks, so they too are
@@ -320,7 +324,7 @@ class FunctionCompiler(ast.NodeVisitor):
                 raise CompileError('mismatched types in comparison', node.left)
 
         # String comparison is a different matter in C
-        if left_type == BUILTIN_TYPES['str']:
+        if left_type == BUILTIN_TYPES[PYTYPE_STR]:
             # Ensure exactly two items are being compared (left + 1 comparator)
             if len(node.comparators) != 1:
                 raise CompileError(
@@ -448,7 +452,7 @@ class FunctionCompiler(ast.NodeVisitor):
         # Handle assingent of numerical constants to variables
         if type(node.value) == ast.Num:
             # ensure target is an int
-            if self.locals[target.id] != 'int':
+                if self.locals[target.id] != PYTYPE_INT:
                 raise CompileError(
                     'assignment of int to incompatible {} var {}'
                     .format(self.locals[target.id], target.id), node.value)
@@ -465,7 +469,7 @@ class FunctionCompiler(ast.NodeVisitor):
         # Handle assignment of string constants to variables
         elif type(node.value) == ast.Str:
             # ensure target is a string
-            if self.locals[target.id] != 'str':
+            if self.locals[target.id] != PYTYPE_STR:
                 raise CompileError(
                     'assignment of str to incompatible {} var `{}`'
                     .format(self.locals[target.id], target.id), node.value)
@@ -512,7 +516,8 @@ class ModuleCompiler(ast.NodeVisitor):
         self.__name__ = dunder_name
 
         # Declare __name__ as a string global
-        self.globals['__name__'] = ast.AnnAssign(annotation=ast.Name(id='str'))
+        self.globals['__name__'] = ast.AnnAssign(
+            annotation=ast.Name(id=PYTYPE_STR))
 
     def _initial_module_source(self):
         return '\n'.join([

@@ -211,12 +211,8 @@ class FunctionCompiler(ast.NodeVisitor):
         else:
             fn_cname, _ = self._load_name(self.node)
 
-        # TODO: Create pre_src with #include stmts
-        pre_src = ''
-        return '{pre_src}\n{ret_type} {fn_cname}({args}) {{\n{body}}}\n'.format(
-            pre_src=pre_src, ret_type=ret_type, fn_cname=fn_cname,
-            args=args_src, body=src,
-        )
+        return '{ret_type} {fn_cname}({args}) {{\n{body}}}\n'.format(
+            ret_type=ret_type, fn_cname=fn_cname, args=args_src, body=src)
 
     def generic_visit(self, node):
         # This function is called by ast.visit() if there is no such visit_XXX

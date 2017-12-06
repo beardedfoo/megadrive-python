@@ -454,7 +454,7 @@ class FunctionCompiler(ast.NodeVisitor):
         # Handle assingent of numerical constants to variables
         if type(node.value) == ast.Num:
             # ensure target is an int
-                if self.locals[target.id] != PYTYPE_INT:
+            if self.locals[target.id] != PYTYPE_INT:
                 raise CompileError(
                     'assignment of int to incompatible {} var {}'
                     .format(self.locals[target.id], target.id), node.value)

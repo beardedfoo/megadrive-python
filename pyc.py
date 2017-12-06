@@ -235,11 +235,17 @@ class FunctionCompiler(ast.NodeVisitor):
             node - an ast.Name or other reference to a variable
 
         """
-        # Functions are looked up by name, while others are looked up by id
+        # Functions are resolved by their name attribute
         if type(node) == ast.FunctionDef:
             lookup_name = node.name
-        else:
+        # Name nodes are resolved through the id attribute
+        elif type(node) == ast.Name:
             lookup_name = node.id
+        # We don't know how to resolve this node
+        else:
+            raise CompileError(
+                'unable to resolve reference from node {}'.format(
+                    node), node)
 
         # Search in locals first, then module globals, then builtins
         if lookup_name in self.locals:

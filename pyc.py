@@ -402,6 +402,16 @@ class FunctionCompiler(ast.NodeVisitor):
         cname, _ = self._load_name(node)
         return cname
 
+    def visit_NameConstant(self, node: ast.NameConstant):
+        """Returns the C name of a python constant"""
+        if node.value == True:
+            return 'true'
+        elif node.value == False:
+            return 'false'
+        else:
+            raise CompileError(
+                'could not compile constant `{}`'.format(ast.dump(node)), node)
+
     def visit_Num(self, node: ast.Num):
         """Return the C representation of a python numerical value"""
         # Numbers are represented just the same in C as they are in python, so
@@ -531,6 +541,7 @@ class ModuleCompiler(ast.NodeVisitor):
         return '\n'.join([
             '#include <stdint.h>',
             '#include <string.h>',
+            '#include <stdbool.h>',
             '#define {prefix}{mod_name}{DOT}__name__ "{dunder_name}"'.format(
                 prefix=MOD_PREFIX, mod_name=self.module_name, DOT=DOT,
                 dunder_name=self.__name__),

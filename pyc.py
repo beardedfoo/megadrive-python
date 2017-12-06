@@ -550,8 +550,10 @@ class ModuleCompiler(ast.NodeVisitor):
     def _initial_module_source(self):
         return '\n'.join([
             '#include <stdint.h>',
-            '#include <string.h>',
-            '#include <stdbool.h>',
+            '#define true 1',
+            '#define false 0',
+            'extern int strcmp(const char*, const char*);',
+            'extern int printf(const char*, ...);',
             '#define {prefix}{mod_name}{DOT}__name__ "{dunder_name}"'.format(
                 prefix=MOD_PREFIX, mod_name=self.module_name, DOT=DOT,
                 dunder_name=self.__name__),

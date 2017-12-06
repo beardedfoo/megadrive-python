@@ -304,6 +304,9 @@ class FunctionCompiler(ast.NodeVisitor):
         return ' {} '.format(self.visit(node.op)).join([
             '({})'.format(self.visit(v)) for v in node.values])
 
+    def visit_Add(self, node: ast.Add):
+        return '+'
+
     def visit_And(self, node: ast.And):
         return '&&'
 

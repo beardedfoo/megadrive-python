@@ -1,3 +1,5 @@
 a.out
 test.c
 test.bin
+.vscode
+*.code-workspace

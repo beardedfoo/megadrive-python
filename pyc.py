@@ -148,6 +148,7 @@ class FunctionCompiler(ast.NodeVisitor):
             for arg in self.node.args.args:
                 self.locals[arg.arg] = arg
 
+        # Generate C source for each AST node under this function
         src = ''
         for body_node in self.node.body:
             node_src = self.visit(body_node)

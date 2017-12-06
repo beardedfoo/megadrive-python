@@ -16,11 +16,13 @@ BUILTIN_FUNCS = {
 # Define some constants for the names of python types
 PYTYPE_INT = 'int'
 PYTYPE_STR = 'str'
+PYTYPE_NONE = 'NoneType'
 
 # These are the C types for various python types supported by this compiler
 BUILTIN_TYPES = {
     PYTYPE_INT: 'int32_t',
     PYTYPE_STR: 'char*',
+    PYTYPE_NONE: 'void',
 }
 
 # A static prefix/suffix for module level things
@@ -104,7 +106,7 @@ class FunctionCompiler(ast.NodeVisitor):
 
         # Look for references to None
         if type(node) == ast.NameConstant and node.value == None:
-            return 'void'
+            return BUILTIN_TYPES[PYTYPE_NONE]
 
         # Nothing was found (probably a bug)
         raise LookupError(
@@ -120,7 +122,7 @@ class FunctionCompiler(ast.NodeVisitor):
                         'missing return type annotation for function `{}`'
                         .format(self.node.name), self.node)
             else:
-                return 'void'
+                return BUILTIN_TYPES[PYTYPE_NONE]
         else:
             # For functions with return type annotations, determine the C type
             # for the annotated python type

@@ -304,6 +304,13 @@ class FunctionCompiler(ast.NodeVisitor):
         return ' {} '.format(self.visit(node.op)).join([
             '({})'.format(self.visit(v)) for v in node.values])
 
+    def visit_BinOp(self, node: ast.BinOp):
+        left_src = self.visit(node.left)
+        right_src = self.visit(node.right)
+        op_src = self.visit(node.op)
+        return '{left} {op} {right}'.format(
+            left=left_src, op=op_src, right=right_src)
+
     def visit_Add(self, node: ast.Add):
         return '+'
 

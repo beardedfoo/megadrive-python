@@ -207,15 +207,15 @@ class FunctionCompiler(ast.NodeVisitor):
         # Sort out what the name of this C functon will be. Modules need a
         # special format, but regular functions are a bit simpler.
         if type(self.node) == ast.Module:
-            fn_name = MOD_PREFIX + self.module_name + MOD_INIT_SUFFIX
+            fn_cname = MOD_PREFIX + self.module_name + MOD_INIT_SUFFIX
         else:
-            fn_name, _ = self._load_name(self.node)
+            fn_cname, _ = self._load_name(self.node)
 
         # TODO: Create pre_src with #include stmts
         pre_src = ''
-        return '{pre_src}\n{ret_type} {fn_name}({args}) {{\n{body}}}\n'.format(
-            pre_src=pre_src, ret_type=ret_type, fn_name=fn_name, args=args_src,
-            body=src,
+        return '{pre_src}\n{ret_type} {fn_cname}({args}) {{\n{body}}}\n'.format(
+            pre_src=pre_src, ret_type=ret_type, fn_cname=fn_cname,
+            args=args_src, body=src,
         )
 
     def generic_visit(self, node):

@@ -15,14 +15,17 @@ BUILTIN_FUNCS = {
 
 # Define some constants for the names of python types
 PYTYPE_INT = 'int'
+CTYPE_INT = 'int32_t'
 PYTYPE_STR = 'str'
+CTYPE_STR = 'char*'
 PYTYPE_NONE = 'NoneType'
+CTYPE_NONE = 'void'
 
 # These are the C types for various python types supported by this compiler
 BUILTIN_TYPES = {
-    PYTYPE_INT: 'int32_t',
-    PYTYPE_STR: 'char*',
-    PYTYPE_NONE: 'void',
+    PYTYPE_INT: CTYPE_INT,
+    PYTYPE_STR: CTYPE_STR,
+    PYTYPE_NONE: CTYPE_NONE,
 }
 
 # A static prefix/suffix for module level things

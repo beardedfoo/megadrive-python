@@ -220,7 +220,7 @@ class FunctionCompiler(ast.NodeVisitor):
         # In other words, this compiler has no function implemented to handle
         # the node being passed in. There's nothing to do here except raise an
         # error about how there is a missing function in the compiler.
-        LOG.error('Encounteder unsupported node: %r', node)
+        LOG.error('Encountered unsupported node: %r', node)
         raise CompileError(
             'Unsupported ast node: {}'.format(ast.dump(node)), node)
 

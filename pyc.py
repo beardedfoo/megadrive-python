@@ -14,19 +14,14 @@ BUILTIN_FUNCS = {
 }
 
 # Define some constants for the names of python types
-PYTYPE_INT = 'int'
+PYTYPE_INT = int
 CTYPE_INT = 'int32_t'
-PYTYPE_STR = 'str'
-CTYPE_STR = 'char*'
-PYTYPE_NONE = 'NoneType'
-CTYPE_NONE = 'void'
 
-# These are the C types for various python types supported by this compiler
-BUILTIN_TYPES = {
-    PYTYPE_INT: CTYPE_INT,
-    PYTYPE_STR: CTYPE_STR,
-    PYTYPE_NONE: CTYPE_NONE,
-}
+PYTYPE_STR = str
+CTYPE_STR = 'char*'
+
+PYTYPE_NONE = type(None)
+CTYPE_NONE = 'void'
 
 # A static prefix/suffix for module level things
 MOD_PREFIX = 'PYMOD_'
@@ -34,6 +29,7 @@ MOD_INIT_SUFFIX = '_INIT'
 
 # How are dots from python references represented in C?
 DOT = '_DOT_'
+
 
 class CompileError(RuntimeError):
     def __init__(self, msg, node):
@@ -49,71 +45,60 @@ class CompileError(RuntimeError):
         return self._msg
 
 
+class Scope(object):
+    def __init__(self, parent=None, locals={}):
+        self.parent = parent
+        self.locals = locals
+
+    def get(self, pyname):
+        if pyname in self.locals:
+            return self.locals[pyname]
+        if self.parent:
+            return self.parent.get(pyname)
+
+    def set(self, pyname, pyvalue):
+        self.locals[pyname] = pyvalue
+
+    def contains(self, key):
+        if key in self.locals:
+            return True
+        if self.parent:
+            return self.parent.contains(key)
+        return False
+
+
+class PyType(object):
+    def __init__(self, pytype, ctype):
+        self._pytype = pytype
+        self._ctype = ctype
+
+    def pytype(self):
+        return self._pytype
+
+    def ctype(self):
+        return self._ctype
+
+
+IntType = PyType(PYTYPE_INT, CTYPE_INT)
+StrType = PyType(PYTYPE_STR, CTYPE_STR)
+
+class FuncType(PyType):
+    def __init__(self, args):
+        self.args = args
+
+def pytype_from_str(type_name):
+    if type_name == 'int':
+        return StrType
+    if type_name == 'str':
+        return IntType
+    raise LookupError()
+
 class FunctionCompiler(ast.NodeVisitor):
     def __init__(self, module_name, module_compiler, node):
         self.module_name = module_name
         self.module_compiler = module_compiler
         self.node = node
-
-        self.locals = {}
-
-    def _ctype(self, node):
-        """Distill an ast node down the C type which it will evaluate to."""
-        pytype = self._pytype(node)
-        return BUILTIN_TYPES[pytype]
-
-    def _pytype(self, node):
-        """
-        Distill an AST node down to the Python type it will evaluate/return.
-
-        This is actually quite tricky, as a node can be a function call,
-        a reference to a local or global variable, a constant, etc.
-        """
-        # If the node is None, the type is None
-        if node == None:
-            return None
-
-        # Python modules will always return an int when called
-        if type(node) == ast.Module:
-            return PYTYPE_INT
-
-        # For function calls, use the function definition of the callee
-        if type(node) == ast.Call:
-            return self._pytype(node.func)
-
-        # For function definitions use the return type annotated
-        if type(node) == ast.FunctionDef:
-            return self._pytype(node.returns)
-
-        # If a variable was declared with an annotated assignment return the
-        # type annotated at the time of assignment
-        if type(node) == ast.AnnAssign:
-            return self._pytype(node.annotation)
-
-        # If a const value is passed in return the python type
-        if type(node) == ast.Num:
-            return PYTYPE_INT
-        if type(node) == ast.Str:
-            return PYTYPE_STR
-
-        # If the node passed in is a reference
-        if type(node) == ast.Name:
-            # If the reference is to a builtin type, return that type
-            if node.id in BUILTIN_TYPES:
-                return node.id
-
-            # Load the declaration for the variable referenced and return the
-            # storage type annotated at the time of declaration
-            _, val = self._load_name(node)
-            return self._pytype(val)
-
-        # Look for references to None
-        if type(node) == ast.NameConstant and node.value == None:
-            return BUILTIN_TYPES[PYTYPE_NONE]
-
-        # Nothing was found (probably a bug)
-        raise LookupError(
-            'BUG: cannot determine python type for {}'.format(ast.dump(node)))
+        self.scope = Scope(parent=module_compiler.scope)
 
     def _fn_ret_ctype(self, fn: ast.FunctionDef):
         # It is okay for functions to lack annotations for return types, but
@@ -146,13 +131,15 @@ class FunctionCompiler(ast.NodeVisitor):
                 'function decorators are not supported',
                 self.node.decorator_list[0])
 
-        # Fill the locals with parameters passed into the function
+        # Define a local variable for each argument this function
+        # will receive at runtime.
         if type(self.node) == ast.FunctionDef:
             # This is confusing for sure...here is an example data structure:
             # FunctionDef(name='main', args=arguments(args=[arg(arg='x', annotation=None), ...
             # See the docs on ast.FunctionDef, ast.arguments, ast.args, and ast.arg
             for arg in self.node.args.args:
-                self.locals[arg.arg] = arg
+                raise RuntimeError(ast.dump(arg.annotation))
+                self.scope.set(arg.arg, arg.annotation)
 
         # Generate C source for each AST node under this function
         src = ''
@@ -171,7 +158,7 @@ class FunctionCompiler(ast.NodeVisitor):
                     .format(self.node.name), self.node)
         else:
             # Modules always return int32
-            ret_type = BUILTIN_TYPES[PYTYPE_INT]
+            ret_type = CTYPE_INT
 
         # Convert the arg specifications for this function/module into a C
         # function signature. Modules are just code blocks, so they too are
@@ -228,41 +215,9 @@ class FunctionCompiler(ast.NodeVisitor):
         raise CompileError(
             'Unsupported ast node: {}'.format(ast.dump(node)), node)
 
-    def _load_name(self, node):
-        """Returns the AST node in which a variable was undeclared
-
-        Arguments:
-            node - an ast.Name or other reference to a variable
-
-        """
-        # Functions are resolved by their name attribute
-        if type(node) == ast.FunctionDef:
-            lookup_name = node.name
-        # Name nodes are resolved through the id attribute
-        elif type(node) == ast.Name:
-            lookup_name = node.id
-        # We don't know how to resolve this node
-        else:
-            raise CompileError(
-                'unable to resolve reference from node {}'.format(
-                    node), node)
-
-        # Search in locals first, then module globals, then builtins
-        if lookup_name in self.locals:
-            # Items at the local scope have the same variable name in C.
-            return [lookup_name, self.locals[lookup_name]]
-        elif lookup_name in self.module_compiler.globals:
-            # Items resolving at the module level have a more complex naming
-            # scheme.
-            return [
-                ''.join([MOD_PREFIX, self.module_name, DOT, lookup_name]),
-                self.module_compiler.globals[lookup_name]
-            ]
-        elif lookup_name in BUILTIN_FUNCS:
-            # Builtin functions have different names in C from python
-            return BUILTIN_FUNCS[lookup_name].name, BUILTIN_FUNCS[lookup_name]
-        else:
-            raise LookupError('no such var `{}`'.format(lookup_name))
+    def visit_Attribute(self, node: ast.Attribute):
+        """Resolve refrences to attributes of objects (such as a.b.c)"""
+        return '{}.{}'.format(self.visit(node.value), node.attr)
 
     def visit_If(self, node: ast.If):
         """Return the C representation of a python if statement"""
@@ -379,25 +334,12 @@ class FunctionCompiler(ast.NodeVisitor):
             return ' '.join(parts)
 
     def visit_Call(self, node:ast.Call):
-        # Find the function being called
-        try:
-            func_name, func = self._load_name(node.func)
-        except LookupError:
-            raise CompileError(
-                'reference to unknown function `{}`'.format(node.func.id),
-                node)
-
-        # Ensure the function being called is infact a function
-        if type(func) != ast.FunctionDef:
-            raise CompileError(
-                'call to non-function `{}` of type `{}`'
-                .format(node.func.id, func), node)
-
+        # TODO: Check that the function exists
         # TODO: Check arguments
         cargs = []
         for arg in node.args:
             cargs.append(self.visit(arg))
-        return '{}({})'.format(func_name, ', '.join(cargs))
+        return '{}({})'.format(node.func.id, ', '.join(cargs))
 
     def visit_Str(self, node:ast.Str):
         """Return the C representation of a python string"""
@@ -409,15 +351,18 @@ class FunctionCompiler(ast.NodeVisitor):
         """Returns the C name of a python variable"""
         # _load_name returns both the cname and the ast node, but we only need
         # the name.
-        cname, _ = self._load_name(node)
-        return cname
+        return node.id
 
     def visit_NameConstant(self, node: ast.NameConstant):
         """Returns the C name of a python constant"""
+        # Check if the node refers to the python constant 'True'
         if node.value == True:
             return 'true'
+        # Check if the node refers to the python constant 'False'
         elif node.value == False:
             return 'false'
+        # There are certainly other constants with no implementation here, so
+        # just raise an error
         else:
             raise CompileError(
                 'could not compile constant `{}`'.format(ast.dump(node)), node)
@@ -432,12 +377,7 @@ class FunctionCompiler(ast.NodeVisitor):
         """Return the C representation of a python 'return' statement"""
         # Ensure the value being returned matches the annotated type of this
         # function.
-        l_type = self._pytype(self.node)
-        r_type = self._pytype(node.value)
-        if l_type != r_type:
-            raise CompileError(
-                'cannot return type `{}` from function with return type `{}`'
-                .format(l_type, r_type), node)
+        # TODO: Check that the type is valid to return
         return 'return {};'.format(self.visit(node.value))
 
     def visit_Expr(self, node: ast.Expr):
@@ -472,7 +412,7 @@ class FunctionCompiler(ast.NodeVisitor):
                 'Use of unsupported feature: attribute assignment', node)
 
         # Ensure the variable has been declared
-        if target.id not in self.locals:
+        if  not self.scope.contains(target.id):
             raise CompileError(
                 'Cannot assign to undeclared local var `{}`'
                 .format(target.id), node)
@@ -480,16 +420,16 @@ class FunctionCompiler(ast.NodeVisitor):
         # Handle assingent of numerical constants to variables
         if type(node.value) == ast.Num:
             # ensure target is an int
-            if self.locals[target.id] != PYTYPE_INT:
+            if self.scope.get(target.id).pytype() != PYTYPE_INT:
                 raise CompileError(
                     'assignment of int to incompatible {} var {}'
-                    .format(self.locals[target.id], target.id), node.value)
+                    .format(self.scope.get(target.id), target.id), node.value)
 
             # prevent float assignment
             if '.' in str(node.value.n):
                 raise CompileError(
                     'assignment of float to incompatible {} var {}'
-                    .format(self.locals[target.id], target.id), node.value)
+                    .format(self.scope.get(target.id), target.id), node.value)
 
             # output the code
             return '{} = {};\n'.format(target.id, node.value.n)
@@ -497,10 +437,10 @@ class FunctionCompiler(ast.NodeVisitor):
         # Handle assignment of string constants to variables
         elif type(node.value) == ast.Str:
             # ensure target is a string
-            if self.locals[target.id] != PYTYPE_STR:
+            if self.scope[target.id] != PYTYPE_STR:
                 raise CompileError(
                     'assignment of str to incompatible {} var `{}`'
-                    .format(self.locals[target.id], target.id), node.value)
+                    .format(self.scope.get(target.id), target.id), node.value)
 
             # output the code
             return '{} = "{}";\n'.format(
@@ -508,44 +448,38 @@ class FunctionCompiler(ast.NodeVisitor):
         else:
             raise CompileError(
                 'Unsupported assignment of type `{}` to `{}` of type `{}`'
-                .format(type(node.value), target.id, self.locals[target.id]),
+                .format(type(node.value), target.id, self.scope.get(target.id)),
                 node.value)
 
     def visit_AnnAssign(self, node: ast.AnnAssign):
         # Sort out whether this is a new local declaration
-        if node.target.id in self.locals:
+        if self.scope.contains(node.target.id):
             raise CompilerError(
                 'Local var `{}` has already been declared'
                 .format(node.target.id))
 
-        # Ensure the data types match for assignment
-        target_type = self._ctype(node)
-        value_type = self._ctype(node.value)
-        if target_type != value_type:
-            raise CompileError(
-                'type mismatch in assignment of {} to {}'.format(
-                    node.value, node.target), node.value)
+        # TODO: Ensure the data types match for assignment
 
         # Store this declaration in the locals table
-        self.locals[node.target.id] = node
+        # TODO: Do not assume node.annotation has an `id` attr
+        self.scope.set(node.target.id, pytype_from_str(node.annotation.id))
 
         # Generate C code for the assignment
         target_src = self.visit(node.target)
         value_src = self.visit(node.value)
-        return '{} {} = {};'.format(target_type, target_src, value_src)
+        return 'int {} = {};'.format(target_src, value_src)
 
 
 class ModuleCompiler(ast.NodeVisitor):
     def __init__(self, module_name, source_filename, node, dunder_name):
         self.module_name = module_name
-        self.globals = {}
+        self.scope = Scope()
         self.node = node
         self.source_filename = source_filename
         self.__name__ = dunder_name
 
         # Declare __name__ as a string global
-        self.globals['__name__'] = ast.AnnAssign(
-            annotation=ast.Name(id=PYTYPE_STR))
+        self.scope.set('__name__', StrType)
 
     def _initial_module_source(self):
         return '\n'.join([
@@ -580,7 +514,7 @@ class ModuleCompiler(ast.NodeVisitor):
                 asname = alias.asname if alias.asname else alias.name
 
                 # Ensure the asname isn't taken
-                if asname in self.globals:
+                if self.scope.contains(asname):
                     raise CompileError(
                         'cannot import `{}` multiple times'.format(
                             asname), node)
@@ -601,7 +535,7 @@ class ModuleCompiler(ast.NodeVisitor):
                 imported_modules.append(asname)
 
                 # Expose that module as a global in this module
-                self.globals[asname] = compiler
+                self.scope.set(asname, ModuleType(scope=compiler.scope))
 
                 # Compile the source and add it to the current source string
                 src += compiler.compile()
@@ -619,7 +553,7 @@ class ModuleCompiler(ast.NodeVisitor):
         # Build a compiler for all other functions
         for mod_node in self.node.body:
             if type(mod_node) == ast.FunctionDef:
-                self.globals[mod_node.name] = mod_node
+                self.scope.set(mod_node.name, FuncType(args=mod_name.args))
                 func_compiler = FunctionCompiler(
                     self.module_name, self, mod_node)
                 func_compilers.append(func_compiler)

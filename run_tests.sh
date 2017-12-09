@@ -1,12 +1,12 @@
 #!/bin/bash
-export GCC=gcc
-export PYC=$(pwd)/pyc.py
+export GCC="gcc -Wall -pedantic-errors"
+export PYC="$(pwd)/pyc.py"
 
 FAILED=0
 PASSED=0
 for test_script in $(find $(pwd)/tests -name run.sh); do
     (cd $(dirname $test_script); bash -e $test_script)
-    if [ $? -ne 0 ]; then
+    if [ $? -ne 42 ]; then
         echo "FAILED: $test_script"
         let FAILED++
     else

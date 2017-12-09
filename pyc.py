@@ -21,7 +21,7 @@ class BaseCompiler(ast.NodeVisitor):
             pass
 
     def generic_visit(self, node):
-        raise CompileError('unhandled visit: {!r}'.format(node))
+        raise CompileError('unhandled visit: {}'.format(ast.dump(node)))
 
     def compiler(self) -> str:
         raise NotImplementedError()

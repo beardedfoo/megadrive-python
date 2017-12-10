@@ -1,4 +1,5 @@
 #!/bin/bash
+export PYTHON=python3.6
 export GCC="gcc -Wall -pedantic-errors"
 export PYC="$(pwd)/pyc.py"
 

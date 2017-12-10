@@ -94,8 +94,8 @@ def parse_args():
     return p.parse_args()
 
 
-def main():
-    logging.basicConfig()
+def main() -> int:
+    logging.basicConfig(level=logging.DEBUG)
     args = parse_args()
     py_src = args.sourcefile.read()
     prog_compiler = ProgramCompiler(py_src)

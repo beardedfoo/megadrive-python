@@ -150,6 +150,7 @@ class LineCompiler(BaseCompiler):
     def visit_Import(self, node: ast.Attribute) -> str:
         src = ''
         for alias in node.names:
+            # The 'C' module has an internal implementation
             if alias.name == 'C':
                 continue
         return src

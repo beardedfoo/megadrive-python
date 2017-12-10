@@ -152,7 +152,7 @@ class ProgramCompiler(object):
         self.py_src = py_src
 
     def _pre_source(self) -> str:
-        return '\n'.join(['#include <stdint.h>']) + '\n\n'
+        return '\n'.join(['#include <stdint.h>', '#include <string.h>']) + '\n\n'
 
     def compile(self) -> str:
         # Use CPython's builtin source parser

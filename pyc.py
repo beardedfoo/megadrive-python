@@ -88,7 +88,7 @@ class ProgramCompiler(object):
         return c_src
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('sourcefile', type=argparse.FileType('r'))
     return p.parse_args()

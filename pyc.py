@@ -59,12 +59,13 @@ class BaseCompiler(ast.NodeVisitor):
         c_name = self.scope.c_name(py_name)
         if py_type == 'int':
             c_type = 'int32_t'
+            def_value = '0'
         else:
             raise NotImplementedError('unhandled py_type: {}'.format(py_type))
         self.scope.add_entry(py_name=py_name, py_type=py_type, c_name=c_name, c_type=c_type)
         LOG.debug('set scope entry `%s` in compiler %s', py_name, self.name)
-        return '{c_type} {c_name};'.format(
-            c_type=c_type, c_name=c_name)
+        return '{c_type} {c_name} = {def_value};'.format(
+            c_type=c_type, c_name=c_name, def_value=def_value)
 
 
 class LineCompiler(BaseCompiler):

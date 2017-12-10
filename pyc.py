@@ -28,6 +28,24 @@ class Scope(dict):
         else:
             return name
 
+    def resolve(self, node):
+        py_name_parts = []
+        def add_node(sub_node):
+            if type(sub_node) == ast.Attribute:
+                add_node(sub_node.value)
+                py_name_parts.append(sub_node.attr)
+            elif type(sub_node) == ast.Name:
+                py_name_parts.append(sub_node.id)
+            else:
+                raise NotImplementedError('cannot resolve from {}'.format(ast.dump(sub_node)))
+
+        add_node(node)
+        LOG.debug('py_name_parts: %r', py_name_parts)
+        cur = self
+        for py_name in py_name_parts:
+            cur = cur[py_name]
+        return cur
+
     def dict(self) -> dict:
         return dict(self)
 
@@ -60,6 +78,9 @@ class BaseCompiler(ast.NodeVisitor):
         if py_type == 'int':
             c_type = 'int32_t'
             def_value = '0'
+        elif py_type == 'str':
+            c_type = 'char*'
+            def_value = 'NULL'
         else:
             raise NotImplementedError('unhandled py_type: {}'.format(py_type))
         self.scope.add_entry(py_name=py_name, py_type=py_type, c_name=c_name, c_type=c_type)
@@ -67,10 +88,17 @@ class BaseCompiler(ast.NodeVisitor):
         return '{c_type} {c_name} = {def_value};'.format(
             c_type=c_type, c_name=c_name, def_value=def_value)
 
+    def py_type(self, node):
+        if type(node) in [ast.Name, ast.Attribute]:
+            var = self.scope.resolve(node)
+            return var.py_type
+        else:
+            raise NotImplementedError('cannot get type of {}'.format(ast.dump(node)))
+
 
 class LineCompiler(BaseCompiler):
     def visit_Return(self, ret_node: ast.Return) -> str:
-        return 'return {};'.format(self.visit(ret_node.value))
+        return 'return {}'.format(self.visit(ret_node.value))
 
     def visit_Num(self, num_node: ast.Num) -> str:
         return str(num_node.n)
@@ -79,49 +107,158 @@ class LineCompiler(BaseCompiler):
         py_name = node.target.id
         if py_name not in self.scope:
             raise CompileError('assignment to undeclared variable `{}` in scope {!r}'.format(py_name, self.scope))
+
         decl = self.scope[py_name]
         if decl.py_type == 'int':
             if type(node.value) != ast.Num:
                 raise CompileError(
                     'assignment of non-numerical value {} to int variable `{}`'
                     .format(ast.dump(node), py_name))
-            value = int(node.value.n)
+            value_src = self.visit(node.value)
+        elif decl.py_type == 'str':
+            if type(node.value) != ast.Str:
+                raise CompileError(
+                    'assignment of non-string value {} to str variable `{}`'
+                    .format(ast.dump(node), py_name))
+            value_src = self.visit(node.value)
         else:
             raise NotImplementedError('unhandled py_type: {}'.format(decl.py_type))
-        return '{c_name} = {value};'.format(
-            c_name=decl.c_name, value=value)
+        return '{c_name} = {value_src}'.format(
+            c_name=decl.c_name, value_src=value_src)
 
     def visit_Name(self, node: ast.Name) -> str:
         py_name = node.id
+
+        # Allow any reference into the C namespace. Let C compiler check them.
+        if py_name == 'C':
+            return ''
+
         if py_name not in self.scope:
-            raise CompileError('unknown reference `{}`'.format(py_name))
-        return self.scope[py_name].c_name
+            raise CompileError('NameError: undefined reference `{}`'.format(py_name))
+
+        c_name = self.scope[py_name].c_name
+        LOG.debug('c_name(%r) == %s', py_name, c_name)
+        return c_name
+
+    def visit_Attribute(self, node: ast.Attribute) -> str:
+        base_name = self.visit(node.value)
+        if base_name:
+            return '{}.{}'.format(self.visit(node.value), node.attr)
+        else:
+            return node.attr
+
+    def visit_Import(self, node: ast.Attribute) -> str:
+        src = ''
+        for alias in node.names:
+            if alias.name == 'C':
+                continue
+        return src
+
+    def visit_If(self, node: ast.Attribute) -> str:
+        # Compile the test condition
+        test_src = self.visit(node.test)
+
+        # Compile the body
+        body_src = ''
+        for body_node in node.body:
+            line_name = '{}:{}'.format(body_node.lineno, body_node.col_offset)
+            line_comp = LineCompiler(line_name, body_node, self.scope)
+            body_src += line_comp.compile()
+
+        # Compile the orelse body
+        orelse_src = ''
+        for orelse_node in node.orelse:
+            line_name = '{}:{}'.format(body_node.lineno, body_node.col_offset)
+            line_comp = LineCompiler(line_name, body_node, self.scope)
+            orelse_src += line_comp.compile()
+
+        # Build the C version
+        if node.orelse:
+            return 'if ({test_src}) {{\n{body_src}\n}} else {{ {orelse_src} }}'.format(
+                test_src=test_src, body_src=body_src, orelse_src=orelse_src)
+        else:
+            return 'if ({test_src}) {{\n{body_src}\n}}'.format(test_src=test_src, body_src=body_src)
+
+    def visit_Compare(self, node: ast.Compare) -> str:
+        left_py_type = self.py_type(node.left)
+        if left_py_type == 'str':
+            if len(node.ops) != 1:
+                raise CompileError('string comparison is only valid against a single comparator')
+            op = type(node.ops[0])
+            comp = node.comparators[0]
+
+            if op == ast.Eq:
+                c_test = '== 0'
+            elif op == ast.Lt:
+                c_test = '== -1'
+            elif op == ast.Gt:
+                c_test = '== 1'
+            elif op == ast.NotEq:
+                c_test = '!= 0'
+            else:
+                raise CompileError('invalid string comparison operator {}'.format(ast.dump(op)))
+            
+            left_src = self.visit(node.left)
+            right_src = self.visit(comp)
+            return 'strcmp({}, {}) {}'.format(left_src, right_src, c_test)
+        else:
+            parts = [self.visit(node.left)]
+            for op, comp in zip(node.ops, node.comparators):
+                parts.append(self.visit(op))
+                parts.append(self.visit(comp))
+            return ' '.join(parts)
+
+    def visit_Eq(self, node: ast.Eq) -> str:
+        return '=='
+
+    def visit_Str(self, node: ast.Str) -> str:
+        return '"{}"'.format(str(node.s))
+
+    def visit_Call(self, node: ast.Call) -> str:
+        arg_src_parts = []
+        for arg in node.args:
+            arg_src_parts.append(self.visit(arg))
+        args_src = ', '.join(arg_src_parts)
+        return '{}({})'.format(self.visit(node.func), args_src)
+
+    def visit_Expr(self, node: ast.Expr) -> str:
+        src = self.visit(node.value)
+        if node == self.root:
+            return src
+        else:
+            return '(' + src + ')'
 
     def compile(self) -> str:
         c_src = self.visit(self.root)
-        return c_src
+        LOG.debug('compiled line:\n\t\t%s\n\n\tinto:\n\t\t%s', ast.dump(self.root), c_src)
 
+        if type(self.root) in [ast.Expr, ast.AnnAssign]:
+            c_src += ';'
+        c_src += '\n'
+        return c_src
 
 class FuncCompiler(BaseCompiler):
     def compile(self) -> str:
-        c_src = 'int {}() {{\n'.format(self.name)
+        c_src = 'void {}() {{\n'.format(self.name)
         for node in self.root.body:
             line_name = '{}:{}'.format(node.lineno, node.col_offset)
             line_comp = LineCompiler(line_name, node, self.scope)
-            line_c_src = line_comp.compile()
-            c_src += '  ' + line_c_src + '\n'
-            LOG.debug('line_c_src: %s', line_c_src)
+            c_src += line_comp.compile() 
         c_src += '}\n\n'
         return c_src
 
 
 class ModuleCompiler(BaseCompiler):
     def compile(self) -> str:
-        c_src = ''
-        func_nodes = []
-        other_nodes = []
+        # Add a var for __name__
+        dunder_name_c_name = self.scope.c_name('__name__')
+        self.scope.add_entry(
+            py_type='str', py_name='__name__', c_type='const char*', c_name=dunder_name_c_name)
+        c_src = 'const char* {} = "{}";\n'.format(dunder_name_c_name, self.name.replace('.', '_DOT_'))
 
         # Sort the body nodes by type (top-level code or functions)
+        func_nodes = []
+        other_nodes = []
         for node in self.root.body: 
             if type(node) == ast.FunctionDef:
                 func_nodes.append(node)
@@ -130,9 +267,10 @@ class ModuleCompiler(BaseCompiler):
 
         # Find all module level variable declarations
         for node in other_nodes:
-            if type(node) != ast.AnnAssign:
-                continue
-            c_src += self.declare_var(node) + '\n'
+            for sub_node in ast.walk(node):
+                if type(sub_node) != ast.AnnAssign:
+                    continue
+                c_src += self.declare_var(sub_node) + '\n'
         c_src += '\n'
 
         # Compile the top-level module code
@@ -152,26 +290,30 @@ class ProgramCompiler(object):
         self.py_src = py_src
 
     def _pre_source(self) -> str:
-        return '\n'.join(['#include <stdint.h>', '#include <string.h>']) + '\n\n'
+        return '\n'.join([
+            '#include <stdint.h>',
+            '#include <string.h>',
+            '#include <stdlib.h>',]) + '\n\n'
 
     def compile(self) -> str:
         # Use CPython's builtin source parser
         root = ast.parse(self.py_src)
+        module_name = '__main__'
 
         # The module exists in a new scope which inherits all builtin declarations
-        main_scope = Scope(BUILTIN)
+        main_scope = Scope(BUILTIN, prefix='MOD_{}'.format(module_name))
         
         # In the __main__ module, __main__ is self-referential
-        main_scope['__main__'] = main_scope
+        main_scope[module_name] = main_scope
 
         # Create a new compiler for the __main__ module
-        main_comp = ModuleCompiler('__main__', root, main_scope)
+        main_comp = ModuleCompiler(module_name, root, main_scope)
 
         # Create and return C source for the application, which can be compiled
         # to binary form using gcc.
         c_src = self._pre_source()
         c_src += main_comp.compile()
-        c_src += 'int main() {return __main__DOT__init__();}'
+        c_src += 'int main() {__main__DOT__init__(); return 0;}'
         return c_src
 
 

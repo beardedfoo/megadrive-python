@@ -69,13 +69,13 @@ class BaseCompiler(ast.NodeVisitor):
 
 
 class LineCompiler(BaseCompiler):
-    def visit_Return(self, ret_node) -> str:
+    def visit_Return(self, ret_node: ast.Return) -> str:
         return 'return {};'.format(self.visit(ret_node.value))
 
-    def visit_Num(self, num_node) -> str:
+    def visit_Num(self, num_node: ast.Num) -> str:
         return str(num_node.n)
 
-    def visit_AnnAssign(self, node):
+    def visit_AnnAssign(self, node: ast.AnnAssign):
         py_name = node.target.id
         if py_name not in self.scope:
             raise CompileError('assignment to undeclared variable `{}` in scope {!r}'.format(py_name, self.scope))
@@ -91,7 +91,7 @@ class LineCompiler(BaseCompiler):
         return '{c_name} = {value};'.format(
             c_name=decl.c_name, value=value)
 
-    def visit_Name(self, node):
+    def visit_Name(self, node: ast.Name):
         py_name = node.id
         if py_name not in self.scope:
             raise CompileError('unknown reference `{}`'.format(py_name))

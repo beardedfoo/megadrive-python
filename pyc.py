@@ -132,7 +132,8 @@ class ModuleCompiler(BaseCompiler):
         for node in other_nodes:
             if type(node) != ast.AnnAssign:
                 continue
-            c_src += self.declare_var(node)
+            c_src += self.declare_var(node) + '\n'
+        c_src += '\n'
 
         # Compile the top-level module code
         init_func_def = ast.FunctionDef(

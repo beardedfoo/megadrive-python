@@ -74,7 +74,7 @@ class BaseCompiler(ast.NodeVisitor):
     def declare_var(self, node: ast.AnnAssign) -> str:
         py_name = node.target.id
         py_type = node.annotation.id
-        c_name = self.scope.c_name(py_name)
+        c_name = self.scope.suggest_c_name(py_name)
         if py_type == 'int':
             c_type = 'int32_t'
             def_value = '0'
@@ -252,7 +252,7 @@ class FuncCompiler(BaseCompiler):
 class ModuleCompiler(BaseCompiler):
     def compile(self) -> str:
         # Add a var for __name__
-        dunder_name_c_name = self.scope.c_name('__name__')
+        dunder_name_c_name = self.scope.suggest_c_name('__name__')
         self.scope.add_entry(
             py_type='str', py_name='__name__', c_type='const char*', c_name=dunder_name_c_name)
         c_src = 'const char* {} = "{}";\n'.format(dunder_name_c_name, self.name.replace('.', '_DOT_'))

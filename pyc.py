@@ -23,10 +23,11 @@ class Scope(dict):
         self[py_name] = ScopeEntry(py_name=py_name, py_type=py_type, c_name=c_name, c_type=c_type)
 
     def c_name(self, name):
+    def suggest_c_name(self, py_name):
         if self.prefix:
-            return '{}_DOT_{}'.format(self.prefix, name)
+            return '{}_DOT_{}'.format(self.prefix, py_name)
         else:
-            return name
+            return py_name
 
     def resolve(self, node):
         py_name_parts = []
@@ -240,7 +241,7 @@ class LineCompiler(BaseCompiler):
 
 class FuncCompiler(BaseCompiler):
     def compile(self) -> str:
-        c_src = 'void {}() {{\n'.format(self.name)
+        c_src = 'void {}() {{\n'.format(self.scope.suggest_c_name(self.name))
         for node in self.root.body:
             line_name = '{}:{}'.format(node.lineno, node.col_offset)
             line_comp = LineCompiler(line_name, node, self.scope)
@@ -276,7 +277,7 @@ class ModuleCompiler(BaseCompiler):
 
         # Compile the top-level module code
         init_func_def = ast.FunctionDef(
-            name='{}DOT__init__'.format(self.name),
+            name='__init__',
             annotation=ast.Name(id='int'),
             body=other_nodes)
         init_func_compiler = FuncCompiler(init_func_def.name, init_func_def, self.scope)
@@ -314,7 +315,8 @@ class ProgramCompiler(object):
         # to binary form using gcc.
         c_src = self._pre_source()
         c_src += main_comp.compile()
-        c_src += 'int main() {__main__DOT__init__(); return 0;}'
+        c_src += 'int main() {{{}(); return 0;}}'.format(
+            main_scope.suggest_c_name('__init__'))
         return c_src
 
 

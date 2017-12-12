@@ -313,9 +313,6 @@ class ProgramCompiler(object):
 
         # The module exists in a new scope which inherits all builtin declarations
         main_scope = Scope(BUILTIN, prefix='MOD_{}'.format(module_name))
-        
-        # In the __main__ module, __main__ is self-referential
-        main_scope[module_name] = main_scope
 
         # Create a new compiler for the __main__ module
         main_comp = ModuleCompiler(module_name, root, main_scope)

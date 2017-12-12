@@ -9,7 +9,8 @@ from collections import namedtuple
 
 LOG = logging.getLogger(__name__)
 
-ScopeEntry = namedtuple('ScopeEntry', ['c_name', 'c_type', 'py_name', 'py_type'])
+ScopeEntry = namedtuple('ScopeEntry', ['name', 'type', 'callable'])
+BiLangScopeEntry = namedtuple('BiLangScopeEntry', ['c', 'py'])
 
 class Scope(dict):
     def __init__(self, parent=None, prefix=None):
@@ -19,8 +20,8 @@ class Scope(dict):
         else:
             dict.__init__(self)
 
-    def add_entry(self, py_name, py_type, c_name, c_type):
-        self[py_name] = ScopeEntry(py_name=py_name, py_type=py_type, c_name=c_name, c_type=c_type)
+    def add_entry(self, c, py):
+        self[py.name] = BiLangScopeEntry(c=c, py=py)
 
     def suggest_c_name(self, py_name):
         if self.prefix:
@@ -83,15 +84,21 @@ class BaseCompiler(ast.NodeVisitor):
             def_value = 'NULL'
         else:
             raise NotImplementedError('unhandled py_type: {}'.format(py_type))
-        self.scope.add_entry(py_name=py_name, py_type=py_type, c_name=c_name, c_type=c_type)
-        LOG.debug('set scope entry `%s` in compiler %s', py_name, self.name)
+
+        # Register the new var in the scope
+        self.scope.add_entry(
+            py=ScopeEntry(name=py_name, type=py_type, callable=False),
+            c=ScopeEntry(name=c_name, type=c_type, callable=False),
+        )
+
+        LOG.debug('set scope entry `%s` in scope %s', py_name, self.name)
         return '{c_type} {c_name} = {def_value};'.format(
             c_type=c_type, c_name=c_name, def_value=def_value)
 
     def py_type(self, node):
         if type(node) in [ast.Name, ast.Attribute]:
             var = self.scope.resolve(node)
-            return var.py_type
+            return var.py.type
         else:
             raise NotImplementedError('cannot get type of {}'.format(ast.dump(node)))
 
@@ -109,13 +116,13 @@ class LineCompiler(BaseCompiler):
             raise CompileError('assignment to undeclared variable `{}` in scope {!r}'.format(py_name, self.scope))
 
         decl = self.scope[py_name]
-        if decl.py_type == 'int':
+        if decl.py.type == 'int':
             if type(node.value) != ast.Num:
                 raise CompileError(
                     'assignment of non-numerical value {} to int variable `{}`'
                     .format(ast.dump(node), py_name))
             value_src = self.visit(node.value)
-        elif decl.py_type == 'str':
+        elif decl.py.type == 'str':
             if type(node.value) != ast.Str:
                 raise CompileError(
                     'assignment of non-string value {} to str variable `{}`'
@@ -124,7 +131,7 @@ class LineCompiler(BaseCompiler):
         else:
             raise NotImplementedError('unhandled py_type: {}'.format(decl.py_type))
         return '{c_name} = {value_src}'.format(
-            c_name=decl.c_name, value_src=value_src)
+            c_name=decl.c.name, value_src=value_src)
 
     def visit_Name(self, node: ast.Name) -> str:
         py_name = node.id
@@ -136,7 +143,7 @@ class LineCompiler(BaseCompiler):
         if py_name not in self.scope:
             raise CompileError('NameError: undefined reference `{}`'.format(py_name))
 
-        c_name = self.scope[py_name].c_name
+        c_name = self.scope[py_name].c.name
         LOG.debug('c_name(%r) == %s', py_name, c_name)
         return c_name
 
@@ -254,7 +261,10 @@ class ModuleCompiler(BaseCompiler):
         # Add a var for __name__
         dunder_name_c_name = self.scope.suggest_c_name('__name__')
         self.scope.add_entry(
-            py_type='str', py_name='__name__', c_type='const char*', c_name=dunder_name_c_name)
+            c=ScopeEntry(name=dunder_name_c_name, type='const char*',
+                         callable=False),
+            py=ScopeEntry(name='__name__', type='str', callable=False),
+        )
         c_src = 'const char* {} = "{}";\n'.format(dunder_name_c_name, self.name.replace('.', '_DOT_'))
 
         # Sort the body nodes by type (top-level code or functions)

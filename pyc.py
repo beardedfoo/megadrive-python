@@ -22,7 +22,6 @@ class Scope(dict):
     def add_entry(self, py_name, py_type, c_name, c_type):
         self[py_name] = ScopeEntry(py_name=py_name, py_type=py_type, c_name=c_name, c_type=c_type)
 
-    def c_name(self, name):
     def suggest_c_name(self, py_name):
         if self.prefix:
             return '{}_DOT_{}'.format(self.prefix, py_name)

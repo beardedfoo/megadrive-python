@@ -7,6 +7,8 @@ import sys
 
 from collections import namedtuple
 
+assert sys.version_info[:2] == (3, 6)
+
 LOG = logging.getLogger(__name__)
 
 ScopeEntry = namedtuple('ScopeEntry', ['name', 'type', 'callable'])

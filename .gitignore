@@ -3,3 +3,5 @@ test.c
 test.bin
 .vscode
 *.code-workspace
+.DS_Store
+build

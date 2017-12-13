@@ -1,7 +1,8 @@
 #!/bin/bash
 export PYTHON=python3.6
 export GCC="gcc -Wall -pedantic-errors"
-export PYC="$(pwd)/pyc.py"
+export PYC="$(pwd)/pyc.py -p unix"
+export PYC_MD="$(pwd)/pyc.py -p md"
 
 FAILED=0
 PASSED=0

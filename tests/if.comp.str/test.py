@@ -1,12 +1,12 @@
-import C
+import sys
 foo: str = 'foo'
 bar: str = 'bar'
 
 if __name__ == '__main__':
     if foo != 'foo':
-        C.exit(1)
+        sys.exit(1)
 
     if foo == bar:
-        C.exit(2)
+        sys.exit(2)
 
-    C.exit(42)
+    sys.exit(42)

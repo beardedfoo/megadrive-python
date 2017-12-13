@@ -54,6 +54,31 @@ class Scope(dict):
 
 BUILTIN = Scope()
 
+SegaScope = Scope()
+SegaScope.add_entry(
+    c=ScopeEntry(name='VDP_init', type=None, callable=True),
+    py=ScopeEntry(name='init', type=None, callable=True)
+)
+
+SegaScope.add_entry(
+    c=ScopeEntry(name='VDP_drawText', type=None, callable=True),
+    py=ScopeEntry(name='draw_text', type=None, callable=True)
+)
+
+SysScope = Scope()
+SysScope.add_entry(
+    c=ScopeEntry(name='exit', type=None, callable=True),
+    py=ScopeEntry(name='exit', type=None, callable=True),
+)
+
+BUILTIN_MODS = {
+    'sys': SysScope,
+    'vdp': SegaScope,
+}
+
+main_scope = Scope(BUILTIN, prefix='MOD___main__')
+
+
 class CompileError(RuntimeError): pass
 
 class BaseCompiler(ast.NodeVisitor):
@@ -135,36 +160,61 @@ class LineCompiler(BaseCompiler):
         return '{c_name} = {value_src}'.format(
             c_name=decl.c.name, value_src=value_src)
 
+    def _name_error(self, name):
+        raise CompileError('NameError: undefined reference `{}`'.format(name))
+
     def visit_Name(self, node: ast.Name) -> str:
         py_name = node.id
 
-        # Allow any reference into the C namespace. Let C compiler check them.
-        if py_name == 'C':
-            return ''
-
         if py_name not in self.scope:
-            raise CompileError('NameError: undefined reference `{}`'.format(py_name))
+            self._name_error(py_name)
 
         c_name = self.scope[py_name].c.name
         LOG.debug('c_name(%r) == %s', py_name, c_name)
         return c_name
-
+    
     def visit_Attribute(self, node: ast.Attribute) -> str:
-        base_name = self.visit(node.value)
-        if base_name:
-            return '{}.{}'.format(self.visit(node.value), node.attr)
+        if node.value.id in BUILTIN_MODS:
+            attr_scope = BUILTIN_MODS[node.value.id]
+            if node.attr not in attr_scope:
+                self._name_error('{}.{}'.format(node.value.id, node.attr))
+            return attr_scope[node.attr].c.name
         else:
-            return node.attr
+            self._name_error(node.value.id)
 
     def visit_Import(self, node: ast.Attribute) -> str:
         src = ''
         for alias in node.names:
-            # The 'C' module has an internal implementation
-            if alias.name == 'C':
+            # Skip modules with an internal implementation
+            if alias.name in BUILTIN_MODS:
                 continue
         return src
 
-    def visit_If(self, node: ast.Attribute) -> str:
+    def visit_Pass(self, node: ast.Pass) -> str:
+        return '; // do nothing\n'
+
+    def visit_NameConstant(self, node: ast.NameConstant) -> str:
+        if node.value == True:
+            return 'TRUE'
+        raise NotImplementedError(ast.dump(node))
+
+    def visit_While(self, node: ast.While) -> str:
+        # Compile the test condition
+        test_src = self.visit(node.test)
+
+        # Compile the body
+        body_src = ''
+        for body_node in node.body:
+            line_name = '{}:{}'.format(body_node.lineno, body_node.col_offset)
+            line_comp = LineCompiler(line_name, body_node, self.scope)
+            body_src += line_comp.compile()
+
+        if node.orelse:
+            raise NotImplementedError('while...else')
+
+        return 'while ({test_src}) {{\n{body_src}\n}}'.format(test_src=test_src, body_src=body_src)
+
+    def visit_If(self, node: ast.If) -> str:
         # Compile the test condition
         test_src = self.visit(node.test)
 
@@ -298,23 +348,24 @@ class ModuleCompiler(BaseCompiler):
             
 
 class ProgramCompiler(object):
-    def __init__(self, name, py_src):
+    def __init__(self, name, py_src, platform):
+        self.platform = platform
         self.name = name
         self.py_src = py_src
 
     def _pre_source(self) -> str:
-        return '\n'.join([
-            '#include <stdint.h>',
-            '#include <string.h>',
-            '#include <stdlib.h>',]) + '\n\n'
+        if self.platform == 'unix':
+            return '\n'.join([
+                '#include <stdint.h>',
+                '#include <string.h>',
+                '#include <stdlib.h>',]) + '\n\n'
+        elif self.platform == 'md':
+            return '#include <genesis.h>\n\n'
 
     def compile(self) -> str:
         # Use CPython's builtin source parser
         root = ast.parse(self.py_src)
         module_name = '__main__'
-
-        # The module exists in a new scope which inherits all builtin declarations
-        main_scope = Scope(BUILTIN, prefix='MOD_{}'.format(module_name))
 
         # Create a new compiler for the __main__ module
         main_comp = ModuleCompiler(module_name, root, main_scope)
@@ -331,6 +382,7 @@ class ProgramCompiler(object):
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('sourcefile', type=argparse.FileType('r'))
+    p.add_argument('--platform', '-p', choices=['md', 'unix'], default='sega')
     return p.parse_args()
 
 
@@ -339,7 +391,7 @@ def main() -> int:
     args = parse_args()
     py_src = args.sourcefile.read()
     module_name = os.path.basename(args.sourcefile.name)
-    prog_compiler = ProgramCompiler(module_name, py_src)
+    prog_compiler = ProgramCompiler(module_name, py_src, args.platform)
     print(prog_compiler.compile())
     return os.EX_OK
 
